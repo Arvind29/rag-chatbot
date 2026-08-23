@@ -1,0 +1,6 @@
+google-genai>=1.0.0
+pypdf>=5.0.0
+trafilatura>=2.0.0
+python-dotenv>=1.0.0
+numpy>=2.0.0
+requests>=2.32.0
