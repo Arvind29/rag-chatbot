@@ -9,8 +9,6 @@ dependencies = [
     "trafilatura>=2.0.0",
     "python-dotenv>=1.0.0",
     "numpy>=2.0.0",
-    "requests>=2.32.0"
+    "requests>=2.32.0",
+    "supabase>=2.0.0"
 ]
-
-[tool.vercel]
-entrypoint = "api.health:handler"
