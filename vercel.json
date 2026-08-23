@@ -1,21 +1,9 @@
 {
     "$schema": "https://openapi.vercel.sh/vercel.json",
-    "functions": {
-        "api/chat.py": {
-            "maxDuration": 60
-        },
-        "api/health.py": {
-            "maxDuration": 10
-        }
-    },
-    "routes": [
+    "rewrites": [
         {
-            "src": "/api/chat",
-            "dest": "/api/chat.py"
-        },
-        {
-            "src": "/api/health",
-            "dest": "/api/health.py"
+            "source": "/api/:path*",
+            "destination": "/api/index.py"
         }
     ]
 }
