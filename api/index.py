@@ -2,9 +2,6 @@ from http.server import BaseHTTPRequestHandler
 import json
 from urllib.parse import urlparse
 
-from rag.pipeline import RAGPipeline
-from rag.store import VectorStore
-
 
 class handler(BaseHTTPRequestHandler):
 
@@ -82,6 +79,9 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
+            from rag.pipeline import RAGPipeline
+            from rag.store import VectorStore
+
             content_length = int(
                 self.headers.get(
                     "Content-Length",
@@ -107,7 +107,10 @@ class handler(BaseHTTPRequestHandler):
             )
 
             question = str(
-                data.get("question", "")
+                data.get(
+                    "question",
+                    ""
+                )
             ).strip()
 
             if not question:
@@ -120,10 +123,7 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             store = VectorStore()
-
-            pipeline = RAGPipeline(
-                store
-            )
+            pipeline = RAGPipeline(store)
 
             result = pipeline.answer(
                 question
