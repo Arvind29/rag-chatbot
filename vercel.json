@@ -10,6 +10,10 @@
             "destination": "/api/index.py?route=url"
         },
         {
+            "source": "/api/upload-pdf",
+            "destination": "/api/index.py?route=pdf"
+        },
+        {
             "source": "/api/health",
             "destination": "/api/index.py?route=health"
         }
