@@ -296,7 +296,8 @@ class handler(BaseHTTPRequestHandler):
                     # as document_name.
                     count = ingest_pdf(
                         temp_path,
-                        store
+                        store,
+                        document_name=safe_name,
                     )
 
                 finally:

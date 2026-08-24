@@ -107,6 +107,7 @@ def _make_chunks(
 def ingest_pdf(
     path: str,
     store: VectorStore,
+    document_name: str | None = None,
 ) -> int:
 
     file_path = Path(path)
@@ -141,10 +142,17 @@ def ingest_pdf(
                 f"[Page {page_number}]\n{text}"
             )
 
+    # Use the original uploaded filename when provided.
+    # Otherwise fall back to the actual file's name.
+    display_name = (
+        document_name
+        or file_path.name
+    )
+
     return _make_chunks(
         "\n\n".join(all_text),
         {
-            "document_name": file_path.name,
+            "document_name": display_name,
             "source_type": "pdf",
             "document_hash": document_hash,
         },
@@ -202,10 +210,12 @@ def ingest_url(
 
     metadata = trafilatura.extract_metadata(raw)
 
-    title = metadata.title if metadata else url
+    title = (
+        metadata.title
+        if metadata
+        else url
+    )
 
-    # Hash the canonical URL so the same webpage
-    # can be detected on subsequent ingestion.
     document_hash = _hash_text(url)
 
     return _make_chunks(
