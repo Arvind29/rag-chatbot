@@ -47,7 +47,12 @@ class handler(BaseHTTPRequestHandler):
             self.path
         ).path.rstrip("/")
 
-        if path == "/api/health":
+        # /api/health
+        # /api/index.py/health
+        if path in {
+            "/api/health",
+            "/api/index.py/health"
+        }:
             self._send_json(
                 200,
                 {
@@ -69,7 +74,12 @@ class handler(BaseHTTPRequestHandler):
             self.path
         ).path.rstrip("/")
 
-        if path != "/api/chat":
+        # Vercel rewrite can expose the rewritten
+        # path as /api/index.py.
+        if path not in {
+            "/api/chat",
+            "/api/index.py"
+        }:
             self._send_json(
                 404,
                 {
@@ -79,6 +89,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
+            # Import only when the chat endpoint is used.
             from rag.pipeline import RAGPipeline
             from rag.store import VectorStore
 
@@ -123,7 +134,10 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             store = VectorStore()
-            pipeline = RAGPipeline(store)
+
+            pipeline = RAGPipeline(
+                store
+            )
 
             result = pipeline.answer(
                 question
