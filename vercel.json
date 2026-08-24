@@ -7,7 +7,7 @@
         },
         {
             "source": "/api/add-url",
-            "destination": "/api/index.py?route=add-url"
+            "destination": "/api/index.py?route=url"
         },
         {
             "source": "/api/health",

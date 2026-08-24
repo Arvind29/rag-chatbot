@@ -156,7 +156,7 @@ class handler(BaseHTTPRequestHandler):
             # ADD URL
             # ==========================
 
-            if route == "add-url":
+            if route == "url":
 
                 from rag.ingest import ingest_url
                 from rag.store import VectorStore
