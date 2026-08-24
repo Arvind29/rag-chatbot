@@ -1,6 +1,5 @@
 from http.server import BaseHTTPRequestHandler
 import json
-from urllib.parse import urlparse
 
 
 class handler(BaseHTTPRequestHandler):
@@ -43,54 +42,17 @@ class handler(BaseHTTPRequestHandler):
         )
 
     def do_GET(self):
-        path = urlparse(
-            self.path
-        ).path.rstrip("/")
-
-        # /api/health
-        # /api/index.py/health
-        if path in {
-            "/api/health",
-            "/api/index.py/health"
-        }:
-            self._send_json(
-                200,
-                {
-                    "status": "ok",
-                    "service": "rag-chatbot"
-                }
-            )
-            return
-
         self._send_json(
-            404,
+            200,
             {
-                "error": "Endpoint not found."
+                "status": "ok",
+                "service": "rag-chatbot"
             }
         )
 
     def do_POST(self):
-        path = urlparse(
-            self.path
-        ).path.rstrip("/")
-
-        # Vercel rewrite can expose the rewritten
-        # path as /api/index.py.
-        if path not in {
-            "/api/chat",
-            "/api/index.py"
-        }:
-            self._send_json(
-                404,
-                {
-                    "error": "Endpoint not found."
-                }
-            )
-            return
-
         try:
-            # Import only when the chat endpoint is used.
-            from rag.pipeline import RAGPipeline
+            from rag.ingest import ingest_url
             from rag.store import VectorStore
 
             content_length = int(
@@ -117,35 +79,89 @@ class handler(BaseHTTPRequestHandler):
                 raw_body.decode("utf-8")
             )
 
-            question = str(
-                data.get(
-                    "question",
-                    ""
-                )
-            ).strip()
+            path = self.path.rstrip("/")
 
-            if not question:
+            # --------------------------------
+            # POST /api/chat
+            # --------------------------------
+            if path.endswith("/api/chat"):
+                from rag.pipeline import RAGPipeline
+
+                question = str(
+                    data.get(
+                        "question",
+                        ""
+                    )
+                ).strip()
+
+                if not question:
+                    self._send_json(
+                        400,
+                        {
+                            "error": "Question is required."
+                        }
+                    )
+                    return
+
+                store = VectorStore()
+
+                pipeline = RAGPipeline(
+                    store
+                )
+
+                result = pipeline.answer(
+                    question
+                )
+
                 self._send_json(
-                    400,
+                    200,
+                    result
+                )
+                return
+
+            # --------------------------------
+            # POST /api/add-url
+            # --------------------------------
+            if path.endswith("/api/add-url"):
+                url = str(
+                    data.get(
+                        "url",
+                        ""
+                    )
+                ).strip()
+
+                if not url:
+                    self._send_json(
+                        400,
+                        {
+                            "error": "URL is required."
+                        }
+                    )
+                    return
+
+                store = VectorStore()
+
+                count = ingest_url(
+                    url,
+                    store
+                )
+
+                self._send_json(
+                    200,
                     {
-                        "error": "Question is required."
+                        "success": True,
+                        "message": "Web page indexed successfully.",
+                        "chunks": count,
+                        "url": url
                     }
                 )
                 return
 
-            store = VectorStore()
-
-            pipeline = RAGPipeline(
-                store
-            )
-
-            result = pipeline.answer(
-                question
-            )
-
             self._send_json(
-                200,
-                result
+                404,
+                {
+                    "error": "Endpoint not found."
+                }
             )
 
         except json.JSONDecodeError:
@@ -160,7 +176,7 @@ class handler(BaseHTTPRequestHandler):
             self._send_json(
                 500,
                 {
-                    "error": "RAG request failed.",
+                    "error": "Request failed.",
                     "detail": str(exc)
                 }
             )
