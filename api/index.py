@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler
 import json
+from urllib.parse import urlparse, parse_qs
 
 
 class handler(BaseHTTPRequestHandler):
@@ -11,26 +12,32 @@ class handler(BaseHTTPRequestHandler):
         ).encode("utf-8")
 
         self.send_response(status_code)
+
         self.send_header(
             "Content-Type",
             "application/json; charset=utf-8"
         )
+
         self.send_header(
             "Content-Length",
             str(len(body))
         )
+
         self.send_header(
             "Access-Control-Allow-Origin",
             "*"
         )
+
         self.send_header(
             "Access-Control-Allow-Methods",
             "GET, POST, OPTIONS"
         )
+
         self.send_header(
             "Access-Control-Allow-Headers",
             "Content-Type"
         )
+
         self.end_headers()
 
         self.wfile.write(body)
@@ -41,19 +48,43 @@ class handler(BaseHTTPRequestHandler):
             {"status": "ok"}
         )
 
+    def _get_route(self):
+        parsed = urlparse(self.path)
+
+        query = parse_qs(
+            parsed.query
+        )
+
+        return query.get(
+            "route",
+            [""]
+        )[0]
+
     def do_GET(self):
+
+        route = self._get_route()
+
+        if route == "health":
+            self._send_json(
+                200,
+                {
+                    "status": "ok",
+                    "service": "rag-chatbot"
+                }
+            )
+            return
+
         self._send_json(
-            200,
+            404,
             {
-                "status": "ok",
-                "service": "rag-chatbot"
+                "error": "Endpoint not found."
             }
         )
 
     def do_POST(self):
+
         try:
-            from rag.ingest import ingest_url
-            from rag.store import VectorStore
+            route = self._get_route()
 
             content_length = int(
                 self.headers.get(
@@ -79,13 +110,14 @@ class handler(BaseHTTPRequestHandler):
                 raw_body.decode("utf-8")
             )
 
-            path = self.path.rstrip("/")
+            # ==========================
+            # CHAT
+            # ==========================
 
-            # --------------------------------
-            # POST /api/chat
-            # --------------------------------
-            if path.endswith("/api/chat"):
+            if route == "chat":
+
                 from rag.pipeline import RAGPipeline
+                from rag.store import VectorStore
 
                 question = str(
                     data.get(
@@ -117,12 +149,18 @@ class handler(BaseHTTPRequestHandler):
                     200,
                     result
                 )
+
                 return
 
-            # --------------------------------
-            # POST /api/add-url
-            # --------------------------------
-            if path.endswith("/api/add-url"):
+            # ==========================
+            # ADD URL
+            # ==========================
+
+            if route == "add-url":
+
+                from rag.ingest import ingest_url
+                from rag.store import VectorStore
+
                 url = str(
                     data.get(
                         "url",
@@ -150,12 +188,19 @@ class handler(BaseHTTPRequestHandler):
                     200,
                     {
                         "success": True,
-                        "message": "Web page indexed successfully.",
+                        "message": (
+                            "Web page indexed successfully."
+                        ),
                         "chunks": count,
                         "url": url
                     }
                 )
+
                 return
+
+            # ==========================
+            # UNKNOWN ROUTE
+            # ==========================
 
             self._send_json(
                 404,
