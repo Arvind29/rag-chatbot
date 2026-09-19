@@ -23,8 +23,11 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "documents")
 
 TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.35"))
-CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "3500"))
-CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "500"))
+
+# Smaller chunks improve retrieval precision for study/technical documents.
+CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1200"))
+CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+
 URL_TIMEOUT_SECONDS = int(os.getenv("URL_TIMEOUT_SECONDS", "15"))
 MAX_URL_BYTES = int(os.getenv("MAX_URL_BYTES", "5000000"))
 MAX_PDF_BYTES = int(os.getenv("MAX_PDF_BYTES", "20000000"))
