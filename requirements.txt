@@ -4,4 +4,4 @@ python-dotenv
 requests
 qdrant-client
 pypdf
-beautifulsoup4
+trafilatura
