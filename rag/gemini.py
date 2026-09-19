@@ -21,15 +21,10 @@ def _post(path: str, payload: dict) -> dict:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     vectors = []
     for text in texts:
-        result = _post("/api/embed", {
-            "model": OLLAMA_EMBEDDING_MODEL,
-            "input": text,
-        })
+        result = _post("/api/embed", {"model": OLLAMA_EMBEDDING_MODEL, "input": text})
         vectors.extend(result.get("embeddings", []))
     if vectors and len(vectors[0]) != EMBEDDING_DIM:
-        raise RuntimeError(
-            f"Embedding dimension mismatch: expected {EMBEDDING_DIM}, got {len(vectors[0])}"
-        )
+        raise RuntimeError(f"Embedding dimension mismatch: expected {EMBEDDING_DIM}, got {len(vectors[0])}")
     return vectors
 
 
@@ -41,7 +36,7 @@ def embed_query(text: str) -> list[float]:
 
 
 def generate_answer(question: str, context: str) -> str:
-    prompt = f"""You are a grounded RAG assistant.
+    prompt = f"""You are a grounded local RAG assistant.
 
 Answer the user's question using ONLY the retrieved context below.
 
@@ -57,9 +52,5 @@ QUESTION:
 RETRIEVED CONTEXT:
 {context}
 """
-    result = _post("/api/generate", {
-        "model": OLLAMA_CHAT_MODEL,
-        "prompt": prompt,
-        "stream": False,
-    })
+    result = _post("/api/generate", {"model": OLLAMA_CHAT_MODEL, "prompt": prompt, "stream": False})
     return result.get("response", "")
