@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 from .config import QDRANT_COLLECTION, QDRANT_PATH
 
@@ -40,7 +47,14 @@ class VectorStore:
         if document_hash:
             self.client.delete(
                 collection_name=QDRANT_COLLECTION,
-                points_selector={"filter": {"must": [{"key": "document_hash", "match": {"value": document_hash}}]}},
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="document_hash",
+                            match=MatchValue(value=document_hash),
+                        )
+                    ]
+                ),
             )
 
         points = []
