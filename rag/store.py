@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
-from supabase import create_client, Client
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .config import SUPABASE_URL, SUPABASE_SECRET_KEY
+from .config import QDRANT_COLLECTION, QDRANT_PATH
 
 
 @dataclass
@@ -14,136 +15,77 @@ class Chunk:
 
 
 class VectorStore:
-
     def __init__(self):
-        if not SUPABASE_URL:
-            raise RuntimeError("SUPABASE_URL is missing.")
+        self.client = QdrantClient(path=QDRANT_PATH)
+        self._ensure_collection()
 
-        if not SUPABASE_SECRET_KEY:
-            raise RuntimeError("SUPABASE_SECRET_KEY is missing.")
+    def _ensure_collection(self):
+        collections = self.client.get_collections().collections
+        if any(c.name == QDRANT_COLLECTION for c in collections):
+            return
 
-        self.client: Client = create_client(
-            SUPABASE_URL,
-            SUPABASE_SECRET_KEY,
+        self.client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(
+                size=768,
+                distance=Distance.COSINE,
+            ),
         )
 
     def add(self, chunks: list[Chunk]):
         if not chunks:
             return
 
-        # All chunks from one ingestion operation have
-        # the same document_hash.
-        document_hash = chunks[0].metadata.get(
-            "document_hash"
-        )
-
-        # Remove the previous version of this document.
+        document_hash = chunks[0].metadata.get("document_hash")
         if document_hash:
-            self.client.table("documents").delete().eq(
-                "document_hash",
-                document_hash,
-            ).execute()
+            self.client.delete(
+                collection_name=QDRANT_COLLECTION,
+                points_selector={"filter": {"must": [{"key": "document_hash", "match": {"value": document_hash}}]}},
+            )
 
-        rows = []
-
+        points = []
         for chunk in chunks:
-            metadata = chunk.metadata
-
-            # PostgreSQL text fields cannot contain NUL characters.
-            clean_content = chunk.content.replace(
-                "\x00",
-                "",
-            )
-
-            rows.append({
-                "content": clean_content,
-
-                "document_name": metadata.get(
-                    "document_name",
-                    "Unknown",
-                ),
-
-                "source_type": metadata.get(
-                    "source_type",
-                    "unknown",
-                ),
-
-                "source_url": metadata.get(
-                    "source_url",
-                ),
-
-                "page_number": metadata.get(
-                    "page_number",
-                ),
-
-                "chunk_index": metadata.get(
-                    "chunk_index",
-                    0,
-                ),
-
-                "document_hash": metadata.get(
-                    "document_hash",
-                ),
-
-                "embedding": chunk.embedding,
-            })
-
-        self.client.table(
-            "documents"
-        ).insert(rows).execute()
-
-    def search(
-        self,
-        query_embedding: list[float],
-        top_k: int,
-        threshold: float,
-    ):
-        result = self.client.rpc(
-            "match_documents",
-            {
-                "query_embedding": query_embedding,
-                "match_threshold": threshold,
-                "match_count": top_k,
-            },
-        ).execute()
-
-        matches = []
-
-        for row in result.data or []:
-
-            metadata = {
-                "document_name": row.get(
-                    "document_name"
-                ),
-                "source_type": row.get(
-                    "source_type"
-                ),
-                "source_url": row.get(
-                    "source_url"
-                ),
-                "page_number": row.get(
-                    "page_number"
-                ),
-                "chunk_index": row.get(
-                    "chunk_index"
-                ),
-                "document_hash": row.get(
-                    "document_hash"
-                ),
-            }
-
-            chunk = Chunk(
-                id=str(row["id"]),
-                content=row["content"],
-                embedding=[],
-                metadata=metadata,
-            )
-
-            matches.append(
-                (
-                    float(row["similarity"]),
-                    chunk,
+            metadata = dict(chunk.metadata)
+            metadata["content"] = chunk.content.replace("\x00", "")
+            points.append(
+                PointStruct(
+                    id=chunk.id,
+                    vector=chunk.embedding,
+                    payload=metadata,
                 )
             )
 
+        self.client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+
+    def search(self, query_embedding: list[float], top_k: int, threshold: float):
+        result = self.client.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=query_embedding,
+            limit=top_k,
+            score_threshold=threshold,
+            with_payload=True,
+        )
+
+        matches = []
+        for point in result.points:
+            payload = point.payload or {}
+            metadata = {
+                "document_name": payload.get("document_name"),
+                "source_type": payload.get("source_type"),
+                "source_url": payload.get("source_url"),
+                "page_number": payload.get("page_number"),
+                "chunk_index": payload.get("chunk_index"),
+                "document_hash": payload.get("document_hash"),
+            }
+            matches.append(
+                (
+                    float(point.score),
+                    Chunk(
+                        id=str(point.id),
+                        content=str(payload.get("content", "")),
+                        embedding=[],
+                        metadata=metadata,
+                    ),
+                )
+            )
         return matches
