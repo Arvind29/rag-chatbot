@@ -22,6 +22,16 @@ def store():
     return VectorStore()
 
 
+def analyze(s: VectorStore, prompt: str) -> str:
+    result = RAGPipeline(s).answer(prompt)
+    return result.get("answer", "").strip()
+
+
+def as_items(text: str) -> list[str]:
+    lines = [line.strip(" -*•\t") for line in text.splitlines() if line.strip()]
+    return [line for line in lines if line and not line.lower().startswith(("i could", "no relevant", "not found"))][:8]
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "local-rag"}
@@ -37,14 +47,21 @@ def documents():
 def dashboard():
     s = store()
     docs = s.list_documents()
-    return {
-        "documents": len(docs),
-        "chunks": s.count(),
-        "facts": [],
-        "errors": [],
-        "deadlines": [],
-        "events": [],
+    if not docs:
+        return {"documents": 0, "chunks": 0, "facts": [], "errors": [], "deadlines": [], "events": []}
+
+    prompts = {
+        "facts": "Extract important explicit facts from the provided documents. Return only concise bullet points.",
+        "errors": "Find explicit errors, contradictions, conflicts, missing information, or suspicious inconsistencies in the provided documents. Return only concise bullet points. If none are found, say none found.",
+        "deadlines": "Find dates, deadlines, expirations, due dates, renewal dates, or time-sensitive commitments in the provided documents. Return only concise bullet points.",
+        "events": "Find important events, actions, decisions, changes, or upcoming activities mentioned in the provided documents. Return only concise bullet points.",
     }
+
+    results = {}
+    for key, prompt in prompts.items():
+        results[key] = as_items(analyze(s, prompt))
+
+    return {"documents": len(docs), "chunks": s.count(), **results}
 
 
 @app.post("/api/chat")
