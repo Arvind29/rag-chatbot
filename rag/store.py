@@ -103,3 +103,65 @@ class VectorStore:
                 )
             )
         return matches
+
+    def count(self) -> int:
+        return int(
+            self.client.count(
+                collection_name=QDRANT_COLLECTION,
+                exact=True,
+            ).count
+        )
+
+    def all_chunks(self, limit: int = 2000) -> list[Chunk]:
+        points, _ = self.client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        chunks = []
+        for point in points:
+            payload = point.payload or {}
+            chunks.append(
+                Chunk(
+                    id=str(point.id),
+                    content=str(payload.get("content", "")),
+                    embedding=[],
+                    metadata={
+                        "document_name": payload.get("document_name"),
+                        "source_type": payload.get("source_type"),
+                        "source_url": payload.get("source_url"),
+                        "page_number": payload.get("page_number"),
+                        "chunk_index": payload.get("chunk_index"),
+                        "document_hash": payload.get("document_hash"),
+                    },
+                )
+            )
+        return chunks
+
+    def list_documents(self) -> list[dict]:
+        chunks = self.all_chunks()
+        documents = {}
+
+        for chunk in chunks:
+            metadata = chunk.metadata
+            key = metadata.get("document_hash") or metadata.get("document_name")
+            if not key:
+                continue
+
+            if key not in documents:
+                documents[key] = {
+                    "document_name": metadata.get("document_name") or "Unknown",
+                    "source_type": metadata.get("source_type") or "unknown",
+                    "source_url": metadata.get("source_url"),
+                    "document_hash": metadata.get("document_hash"),
+                    "chunks": 0,
+                }
+
+            documents[key]["chunks"] += 1
+
+        return sorted(
+            documents.values(),
+            key=lambda item: item["document_name"].lower(),
+        )
