@@ -1,6 +1,4 @@
 import argparse
-import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -10,8 +8,9 @@ from rag.store import VectorStore
 
 load_dotenv()
 
+
 def main():
-    parser = argparse.ArgumentParser(description="RAG chatbot Python prototype")
+    parser = argparse.ArgumentParser(description="Local RAG chatbot")
     parser.add_argument("--pdf", help="Path to a PDF to ingest")
     parser.add_argument("--url", help="Public HTTP(S) URL to ingest")
     parser.add_argument("--question", help="Question to ask after ingestion")
@@ -32,7 +31,7 @@ def main():
 
     if not args.question:
         print("[2/3] Ingestion check complete.")
-        print("[3/3] No question supplied. Add --question to test retrieval + Gemini.")
+        print("[3/3] No question supplied. Add --question to test retrieval + Ollama.")
         return
 
     print("[2/3] Running retrieval...")
@@ -44,6 +43,7 @@ def main():
     print("\n=== SOURCES ===")
     for source in result["sources"]:
         print(f"- {source}")
+
 
 if __name__ == "__main__":
     main()
