@@ -46,27 +46,20 @@ def _validate_public_url(url: str) -> str:
         ip = ipaddress.ip_address(entry[4][0])
 
         if any(ip in network for network in blocked_ranges):
-            raise ValueError(
-                "Private/internal network addresses are blocked."
-            )
+            raise ValueError("Private/internal network addresses are blocked.")
 
     return url
 
 
 def _hash_text(value: str) -> str:
-    return hashlib.sha256(
-        value.encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _hash_file(file_path: Path) -> str:
     sha256 = hashlib.sha256()
 
     with file_path.open("rb") as file:
-        for block in iter(
-            lambda: file.read(1024 * 1024),
-            b"",
-        ):
+        for block in iter(lambda: file.read(1024 * 1024), b""):
             sha256.update(block)
 
     return sha256.hexdigest()
@@ -76,16 +69,15 @@ def _make_chunks(
     text: str,
     metadata: dict,
     store: VectorStore,
-) -> int:
-
+    page_number: int | None = None,
+) -> list[Chunk]:
     chunks = chunk_text(text)
-
     if not chunks:
-        raise ValueError("No extractable text found.")
+        return []
 
     embeddings = embed_texts(chunks)
 
-    records = [
+    return [
         Chunk(
             id=str(uuid.uuid4()),
             content=content,
@@ -93,14 +85,17 @@ def _make_chunks(
             metadata={
                 **metadata,
                 "chunk_index": index,
+                "page_number": page_number,
             },
         )
-        for index, (content, embedding)
-        in enumerate(zip(chunks, embeddings))
+        for index, (content, embedding) in enumerate(zip(chunks, embeddings))
     ]
 
-    store.add(records)
 
+def _store_records(records: list[Chunk], store: VectorStore) -> int:
+    if not records:
+        raise ValueError("No extractable text found.")
+    store.add(records)
     return len(records)
 
 
@@ -109,93 +104,63 @@ def ingest_pdf(
     store: VectorStore,
     document_name: str | None = None,
 ) -> int:
-
     file_path = Path(path)
 
     if not file_path.is_file():
         raise FileNotFoundError(path)
 
     if file_path.stat().st_size > MAX_PDF_BYTES:
-        raise ValueError(
-            "PDF exceeds configured size limit."
-        )
+        raise ValueError("PDF exceeds configured size limit.")
 
     if file_path.suffix.lower() != ".pdf":
-        raise ValueError(
-            "Only PDF files are supported."
-        )
+        raise ValueError("Only PDF files are supported.")
 
     document_hash = _hash_file(file_path)
-
     reader = PdfReader(str(file_path))
+    display_name = document_name or file_path.name
 
-    all_text = []
+    base_metadata = {
+        "document_name": display_name,
+        "source_type": "pdf",
+        "document_hash": document_hash,
+    }
 
-    for page_number, page in enumerate(
-        reader.pages,
-        start=1,
-    ):
+    records: list[Chunk] = []
+
+    for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
-
         if text.strip():
-            all_text.append(
-                f"[Page {page_number}]\n{text}"
+            records.extend(
+                _make_chunks(
+                    text,
+                    base_metadata,
+                    store,
+                    page_number=page_number,
+                )
             )
 
-    # Use the original uploaded filename when provided.
-    # Otherwise fall back to the actual file's name.
-    display_name = (
-        document_name
-        or file_path.name
-    )
-
-    return _make_chunks(
-        "\n\n".join(all_text),
-        {
-            "document_name": display_name,
-            "source_type": "pdf",
-            "document_hash": document_hash,
-        },
-        store,
-    )
+    return _store_records(records, store)
 
 
-def ingest_url(
-    url: str,
-    store: VectorStore,
-) -> int:
-
+def ingest_url(url: str, store: VectorStore) -> int:
     url = _validate_public_url(url)
 
     response = requests.get(
         url,
         timeout=URL_TIMEOUT_SECONDS,
-        headers={
-            "User-Agent": "RAG-Prototype/1.0"
-        },
+        headers={"User-Agent": "RAG-Prototype/1.0"},
         stream=True,
     )
 
     response.raise_for_status()
 
-    content_length = response.headers.get(
-        "Content-Length"
-    )
-
-    if (
-        content_length
-        and int(content_length) > MAX_URL_BYTES
-    ):
-        raise ValueError(
-            "Web response exceeds configured size limit."
-        )
+    content_length = response.headers.get("Content-Length")
+    if content_length and int(content_length) > MAX_URL_BYTES:
+        raise ValueError("Web response exceeds configured size limit.")
 
     raw = response.content
-
     if len(raw) > MAX_URL_BYTES:
-        raise ValueError(
-            "Web response exceeds configured size limit."
-        )
+        raise ValueError("Web response exceeds configured size limit.")
 
     downloaded = trafilatura.extract(
         raw,
@@ -204,21 +169,13 @@ def ingest_url(
     )
 
     if not downloaded:
-        raise ValueError(
-            "Could not extract readable webpage content."
-        )
+        raise ValueError("Could not extract readable webpage content.")
 
     metadata = trafilatura.extract_metadata(raw)
-
-    title = (
-        metadata.title
-        if metadata
-        else url
-    )
-
+    title = metadata.title if metadata else url
     document_hash = _hash_text(url)
 
-    return _make_chunks(
+    records = _make_chunks(
         downloaded,
         {
             "document_name": title or url,
@@ -226,5 +183,6 @@ def ingest_url(
             "source_url": url,
             "document_hash": document_hash,
         },
-        store,
     )
+
+    return _store_records(records, store)
