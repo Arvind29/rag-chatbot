@@ -2,7 +2,7 @@
 
 import { DragEvent, FormEvent, useEffect, useState } from "react";
 
-const API_URL = "";
+const API_URL = "http://127.0.0.1:8005";
 const CATEGORIES = ["work", "learning", "finance", "personal", "reference"];
 const EXTENSIONS = ".pdf,.docx,.txt,.md,.csv";
 
