@@ -1,16 +1,9 @@
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance,
-    FieldCondition,
-    Filter,
-    MatchValue,
-    PointStruct,
-    VectorParams,
-)
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
 
-from .config import QDRANT_COLLECTION, QDRANT_PATH
+from .config import EMBEDDING_DIM, QDRANT_COLLECTION, QDRANT_PATH
 
 
 @dataclass
@@ -30,138 +23,83 @@ class VectorStore:
         collections = self.client.get_collections().collections
         if any(c.name == QDRANT_COLLECTION for c in collections):
             return
-
         self.client.create_collection(
             collection_name=QDRANT_COLLECTION,
-            vectors_config=VectorParams(
-                size=768,
-                distance=Distance.COSINE,
-            ),
+            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
         )
 
     def add(self, chunks: list[Chunk]):
         if not chunks:
             return
-
         document_hash = chunks[0].metadata.get("document_hash")
         if document_hash:
             self.client.delete(
                 collection_name=QDRANT_COLLECTION,
-                points_selector=Filter(
-                    must=[
-                        FieldCondition(
-                            key="document_hash",
-                            match=MatchValue(value=document_hash),
-                        )
-                    ]
-                ),
+                points_selector=Filter(must=[FieldCondition(key="document_hash", match=MatchValue(value=document_hash))]),
             )
-
         points = []
         for chunk in chunks:
             metadata = dict(chunk.metadata)
             metadata["content"] = chunk.content.replace("\x00", "")
-            points.append(
-                PointStruct(
-                    id=chunk.id,
-                    vector=chunk.embedding,
-                    payload=metadata,
-                )
-            )
-
+            points.append(PointStruct(id=chunk.id, vector=chunk.embedding, payload=metadata))
         self.client.upsert(collection_name=QDRANT_COLLECTION, points=points)
 
-    def search(self, query_embedding: list[float], top_k: int, threshold: float):
+    @staticmethod
+    def _metadata(payload: dict) -> dict:
+        return {
+            "document_name": payload.get("document_name"),
+            "document_type": payload.get("document_type"),
+            "source_type": payload.get("source_type"),
+            "source_url": payload.get("source_url"),
+            "category": payload.get("category"),
+            "page_number": payload.get("page_number"),
+            "chunk_index": payload.get("chunk_index"),
+            "document_hash": payload.get("document_hash"),
+        }
+
+    def search(self, query_embedding: list[float], top_k: int, threshold: float, category: str | None = None):
+        query_filter = None
+        if category:
+            query_filter = Filter(must=[FieldCondition(key="category", match=MatchValue(value=category))])
         result = self.client.query_points(
             collection_name=QDRANT_COLLECTION,
             query=query_embedding,
             limit=top_k,
             score_threshold=threshold,
+            query_filter=query_filter,
             with_payload=True,
         )
-
-        matches = []
-        for point in result.points:
-            payload = point.payload or {}
-            metadata = {
-                "document_name": payload.get("document_name"),
-                "source_type": payload.get("source_type"),
-                "source_url": payload.get("source_url"),
-                "page_number": payload.get("page_number"),
-                "chunk_index": payload.get("chunk_index"),
-                "document_hash": payload.get("document_hash"),
-            }
-            matches.append(
-                (
-                    float(point.score),
-                    Chunk(
-                        id=str(point.id),
-                        content=str(payload.get("content", "")),
-                        embedding=[],
-                        metadata=metadata,
-                    ),
-                )
-            )
-        return matches
+        return [
+            (float(point.score), Chunk(id=str(point.id), content=str((point.payload or {}).get("content", "")), embedding=[], metadata=self._metadata(point.payload or {})))
+            for point in result.points
+        ]
 
     def count(self) -> int:
-        return int(
-            self.client.count(
-                collection_name=QDRANT_COLLECTION,
-                exact=True,
-            ).count
-        )
+        return int(self.client.count(collection_name=QDRANT_COLLECTION, exact=True).count)
 
     def all_chunks(self, limit: int = 2000) -> list[Chunk]:
-        points, _ = self.client.scroll(
-            collection_name=QDRANT_COLLECTION,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
-
-        chunks = []
-        for point in points:
-            payload = point.payload or {}
-            chunks.append(
-                Chunk(
-                    id=str(point.id),
-                    content=str(payload.get("content", "")),
-                    embedding=[],
-                    metadata={
-                        "document_name": payload.get("document_name"),
-                        "source_type": payload.get("source_type"),
-                        "source_url": payload.get("source_url"),
-                        "page_number": payload.get("page_number"),
-                        "chunk_index": payload.get("chunk_index"),
-                        "document_hash": payload.get("document_hash"),
-                    },
-                )
-            )
-        return chunks
+        points, _ = self.client.scroll(collection_name=QDRANT_COLLECTION, limit=limit, with_payload=True, with_vectors=False)
+        return [
+            Chunk(id=str(point.id), content=str((point.payload or {}).get("content", "")), embedding=[], metadata=self._metadata(point.payload or {}))
+            for point in points
+        ]
 
     def list_documents(self) -> list[dict]:
-        chunks = self.all_chunks()
         documents = {}
-
-        for chunk in chunks:
+        for chunk in self.all_chunks():
             metadata = chunk.metadata
             key = metadata.get("document_hash") or metadata.get("document_name")
             if not key:
                 continue
-
             if key not in documents:
                 documents[key] = {
                     "document_name": metadata.get("document_name") or "Unknown",
+                    "document_type": metadata.get("document_type") or "unknown",
                     "source_type": metadata.get("source_type") or "unknown",
                     "source_url": metadata.get("source_url"),
+                    "category": metadata.get("category") or "reference",
                     "document_hash": metadata.get("document_hash"),
                     "chunks": 0,
                 }
-
             documents[key]["chunks"] += 1
-
-        return sorted(
-            documents.values(),
-            key=lambda item: item["document_name"].lower(),
-        )
+        return sorted(documents.values(), key=lambda item: item["document_name"].lower())
