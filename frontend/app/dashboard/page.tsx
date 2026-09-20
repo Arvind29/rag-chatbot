@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = "http://127.0.0.1:8005";
 
 type Finding = { text: string; document_name?: string; page_number?: number | null; evidence?: string };
 type Dashboard = { documents: number; chunks: number; facts: Finding[]; errors: Finding[]; deadlines: Finding[]; events: Finding[] };
@@ -10,8 +10,8 @@ export default function Dashboard() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
   async function load() {
-    try { const response = await fetch(`${API}/api/dashboard`); if (!response.ok) throw new Error(); setData(await response.json()); }
-    catch { setError("Dashboard API is not reachable."); }
+    try { const response = await fetch(`${API}/api/dashboard`, { cache: "no-store" }); const raw = await response.text(); let body: any = {}; try { body = raw ? JSON.parse(raw) : {}; } catch { body = { detail: raw }; } if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`); setData(body); setError(""); }
+    catch (err) { setError(err instanceof Error ? err.message : "Dashboard API is not reachable."); }
   }
   useEffect(() => { load(); }, []);
   if (error) return <main className="min-h-screen p-8 text-red-700">{error}</main>;
