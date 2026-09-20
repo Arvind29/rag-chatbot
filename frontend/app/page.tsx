@@ -2,7 +2,7 @@
 
 import { DragEvent, FormEvent, useEffect, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_URL = "";
 const CATEGORIES = ["work", "learning", "finance", "personal", "reference"];
 const EXTENSIONS = ".pdf,.docx,.txt,.md,.csv";
 
@@ -25,8 +25,9 @@ export default function Home() {
   async function refreshDocuments() {
     try {
       const response = await fetch(`${API_URL}/api/documents`, { cache: "no-store" });
-      if (response.ok) setDocuments((await response.json()).documents || []);
-    } catch (err) { console.error("Document refresh failed", err); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setDocuments((await response.json()).documents || []);
+    } catch (err) { console.error("Document refresh failed", err); setError("Cannot connect to local API. Start FastAPI on port 8001."); }
   }
   useEffect(() => { refreshDocuments(); }, []);
 
@@ -50,8 +51,7 @@ export default function Home() {
     const allowed = [".pdf", ".docx", ".txt", ".md", ".csv"];
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (!allowed.includes(extension)) { setError("Supported files: PDF, DOCX, TXT, MD and CSV."); return; }
-    setUploading(true); setError("");
-    setUploadStatus(`Uploading ${file.name}...`);
+    setUploading(true); setError(""); setUploadStatus(`Uploading ${file.name}...`);
     try {
       const form = new FormData(); form.append("file", file); form.append("category", category);
       setUploadStatus(`Uploading ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
@@ -64,7 +64,7 @@ export default function Home() {
       await refreshDocuments();
     } catch (err) {
       setUploadStatus("");
-      setError(err instanceof Error ? err.message : "Upload failed. Check FastAPI on port 8001.");
+      setError(err instanceof Error ? err.message : "Upload failed. Check that FastAPI is running on port 8001.");
     } finally { setUploading(false); }
   }
 
