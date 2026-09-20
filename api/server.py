@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from functools import lru_cache
 import os
 import tempfile
+import threading
 import requests
 
 from rag.config import DOCUMENT_CATEGORIES, MAX_FILE_BYTES
@@ -33,15 +34,42 @@ class UrlRequest(BaseModel):
     url: str
     category: str = "reference"
 
-@lru_cache(maxsize=1)
-def store() -> VectorStore:
-    """Return one Qdrant local client for this FastAPI process.
+# Qdrant Local locks its on-disk directory. Do not create a new client per
+# request, and do not rely on lru_cache for singleton initialization: the
+# cache can execute the wrapped function more than once during a concurrent
+# cache miss. Initialize exactly once during FastAPI startup instead.
+_store: VectorStore | None = None
+_store_lock = threading.Lock()
 
-    Qdrant Local locks its storage directory, so creating a new client for
-    every request causes storage-lock failures. A single cached client keeps
-    all endpoints in this process on the same local store.
-    """
-    return VectorStore()
+@app.on_event("startup")
+def initialize_store():
+    global _store
+    with _store_lock:
+        if _store is None:
+            _store = VectorStore()
+
+@app.on_event("shutdown")
+def shutdown_store():
+    global _store
+    with _store_lock:
+        if _store is not None:
+            try:
+                _store.client.close()
+            except Exception:
+                pass
+            _store = None
+
+def store() -> VectorStore:
+    if _store is None:
+        raise RuntimeError("Vector store is not initialized. Restart FastAPI.")
+    return _store
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception):
+    # Always return JSON so the browser never tries to parse a plain-text
+    # "Internal Server Error" response as JSON.
+    print(f"Unhandled API error on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "Internal server error. Check the FastAPI console."})
 
 def _analysis_context(s: VectorStore, max_chunks: int = 120) -> str:
     parts = []
@@ -65,7 +93,7 @@ def _structured_analysis(s: VectorStore, category: str, instruction: str) -> lis
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "local-rag"}
+    return {"status": "ok", "service": "local-rag", "qdrant": _store is not None}
 
 @app.get("/api/categories")
 def categories():
@@ -73,17 +101,23 @@ def categories():
 
 @app.get("/api/documents")
 def documents():
-    s = store()
-    return {"documents": s.list_documents(), "total_chunks": s.count()}
+    try:
+        s = store()
+        return {"documents": s.list_documents(), "total_chunks": s.count()}
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 @app.get("/api/dashboard")
 def dashboard():
-    s = store()
-    docs = s.list_documents()
-    if not docs:
-        return {"documents": 0, "chunks": 0, "facts": [], "errors": [], "deadlines": [], "events": []}
-    instructions = {"facts": "Extract only explicit important facts.", "errors": "Identify only explicit errors, contradictions, conflicts, missing information, or inconsistencies supported by the text.", "deadlines": "Extract only explicit dates, deadlines, expirations, due dates, renewal dates, or time-sensitive commitments.", "events": "Extract only important explicit events, actions, decisions, changes, or upcoming activities."}
-    return {"documents": len(docs), "chunks": s.count(), **{key: _structured_analysis(s, key, instruction) for key, instruction in instructions.items()}}
+    try:
+        s = store()
+        docs = s.list_documents()
+        if not docs:
+            return {"documents": 0, "chunks": 0, "facts": [], "errors": [], "deadlines": [], "events": []}
+        instructions = {"facts": "Extract only explicit important facts.", "errors": "Identify only explicit errors, contradictions, conflicts, missing information, or inconsistencies supported by the text.", "deadlines": "Extract only explicit dates, deadlines, expirations, due dates, renewal dates, or time-sensitive commitments.", "events": "Extract only important explicit events, actions, decisions, changes, or upcoming activities."}
+        return {"documents": len(docs), "chunks": s.count(), **{key: _structured_analysis(s, key, instruction) for key, instruction in instructions.items()}}
+    except Exception as exc:
+        raise HTTPException(503, f"Dashboard unavailable: {exc}") from exc
 
 @app.post("/api/chat")
 def chat(request: ChatRequest):
@@ -91,7 +125,13 @@ def chat(request: ChatRequest):
         raise HTTPException(400, "Question is required.")
     if request.category and request.category not in DOCUMENT_CATEGORIES:
         raise HTTPException(400, "Invalid category.")
-    return RAGPipeline(store()).answer(request.question.strip(), category=request.category)
+    try:
+        return RAGPipeline(store()).answer(request.question.strip(), category=request.category)
+    except requests.RequestException as exc:
+        raise HTTPException(503, "Cannot reach Ollama. Make sure Ollama is running and the configured models are available.") from exc
+    except Exception as exc:
+        print(f"Chat error: {exc}")
+        raise HTTPException(500, f"Chat failed: {exc}") from exc
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...), category: str = "reference"):
@@ -112,6 +152,8 @@ async def upload(file: UploadFile = File(...), category: str = "reference"):
         count = ingest_file(path, store(), category=category, document_name=os.path.basename(file.filename))
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(400, str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(503, "Cannot reach Ollama for embeddings. Make sure Ollama is running and the embedding model is available.") from exc
     finally:
         if os.path.exists(path):
             os.remove(path)
