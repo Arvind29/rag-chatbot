@@ -10,6 +10,14 @@ type Source = { document_name: string; page_number: number | null; source_url: s
 type Message = { role: "user" | "assistant"; content: string };
 type Document = { document_name: string; source_type: string; chunks: number; category?: string; document_type?: string };
 
+async function readApiResponse(response: Response) {
+  const raw = await response.text();
+  let data: any = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw || `HTTP ${response.status}` }; }
+  if (!response.ok) throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+  return data;
+}
+
 export default function Home() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,9 +33,10 @@ export default function Home() {
   async function refreshDocuments() {
     try {
       const response = await fetch(`${API_URL}/api/documents`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setDocuments((await response.json()).documents || []);
-    } catch (err) { console.error("Document refresh failed", err); setError("Cannot connect to local API. Start FastAPI on port 8005."); }
+      const data = await readApiResponse(response);
+      setDocuments(data.documents || []);
+      setError("");
+    } catch (err) { console.error("Document refresh failed", err); setError(err instanceof Error ? err.message : "Cannot connect to local API on port 8005."); }
   }
   useEffect(() => { refreshDocuments(); }, []);
 
@@ -39,8 +48,7 @@ export default function Home() {
     setMessages(current => [...current, { role: "user", content: text }]);
     try {
       const response = await fetch(`${API_URL}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || data.error || "Chat failed.");
+      const data = await readApiResponse(response);
       setMessages(current => [...current, { role: "assistant", content: data.answer || "No answer returned." }]);
       setSources(data.sources || []);
     } catch (err) { setError(err instanceof Error ? err.message : "Chat failed."); }
@@ -56,15 +64,12 @@ export default function Home() {
       const form = new FormData(); form.append("file", file); form.append("category", category);
       setUploadStatus(`Uploading ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
       const response = await fetch(`${API_URL}/api/upload`, { method: "POST", body: form });
-      const raw = await response.text();
-      let data: any = {};
-      try { data = JSON.parse(raw); } catch { data = { detail: raw }; }
-      if (!response.ok) throw new Error(data.detail || data.error || `Upload failed (HTTP ${response.status}).`);
+      const data = await readApiResponse(response);
       setUploadStatus(`✓ Uploaded and indexed: ${file.name} • ${data.chunks ?? 0} chunks • ${data.category || category}`);
       await refreshDocuments();
     } catch (err) {
       setUploadStatus("");
-      setError(err instanceof Error ? err.message : "Upload failed. Check that FastAPI is running on port 8005.");
+      setError(err instanceof Error ? err.message : "Upload failed. Check FastAPI on port 8005.");
     } finally { setUploading(false); }
   }
 
@@ -82,9 +87,7 @@ export default function Home() {
       <aside className="hidden w-80 shrink-0 overflow-y-auto border-r bg-white p-5 md:block">
         <h2 className="font-semibold">Add documents</h2>
         <label className="mt-3 block text-xs font-medium text-slate-500">Category</label>
-        <select value={category} onChange={e => setCategory(e.target.value)} className="mt-1 w-full border px-3 py-2 text-sm">
-          {CATEGORIES.map(item => <option key={item} value={item}>{item}</option>)}
-        </select>
+        <select value={category} onChange={e => setCategory(e.target.value)} className="mt-1 w-full border px-3 py-2 text-sm">{CATEGORIES.map(item => <option key={item} value={item}>{item}</option>)}</select>
         <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={drop} className={`mt-3 border-2 border-dashed p-6 text-center ${dragging ? "border-slate-700 bg-slate-100" : "border-slate-300"}`}>
           <div className="text-sm font-medium">{uploading ? "Indexing document..." : "Drag & drop document"}</div><div className="my-2 text-xs text-slate-500">PDF • DOCX • TXT • MD • CSV</div>
           <label className="inline-block cursor-pointer bg-slate-200 px-4 py-2 text-sm font-medium">Choose file<input type="file" accept={EXTENSIONS} className="hidden" disabled={uploading} onChange={e => { const file = e.target.files?.[0]; if (file) upload(file); e.currentTarget.value = ""; }} /></label>
