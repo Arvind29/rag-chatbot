@@ -27,7 +27,7 @@ export default function Home() {
       const response = await fetch(`${API_URL}/api/documents`, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setDocuments((await response.json()).documents || []);
-    } catch (err) { console.error("Document refresh failed", err); setError("Cannot connect to local API. Start FastAPI on port 8001."); }
+    } catch (err) { console.error("Document refresh failed", err); setError("Cannot connect to local API. Start FastAPI on port 8005."); }
   }
   useEffect(() => { refreshDocuments(); }, []);
 
@@ -64,7 +64,7 @@ export default function Home() {
       await refreshDocuments();
     } catch (err) {
       setUploadStatus("");
-      setError(err instanceof Error ? err.message : "Upload failed. Check that FastAPI is running on port 8001.");
+      setError(err instanceof Error ? err.message : "Upload failed. Check that FastAPI is running on port 8005.");
     } finally { setUploading(false); }
   }
 
