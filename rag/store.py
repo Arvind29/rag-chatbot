@@ -33,10 +33,7 @@ class VectorStore:
             return
         document_hash = chunks[0].metadata.get("document_hash")
         if document_hash:
-            self.client.delete(
-                collection_name=QDRANT_COLLECTION,
-                points_selector=Filter(must=[FieldCondition(key="document_hash", match=MatchValue(value=document_hash))]),
-            )
+            self.delete_document(document_hash=document_hash)
         points = []
         for chunk in chunks:
             metadata = dict(chunk.metadata)
@@ -78,9 +75,19 @@ class VectorStore:
         return int(self.client.count(collection_name=QDRANT_COLLECTION, exact=True).count)
 
     def all_chunks(self, limit: int = 2000) -> list[Chunk]:
-        points, _ = self.client.scroll(collection_name=QDRANT_COLLECTION, limit=limit, with_payload=True, with_vectors=False)
+        points, _ = self.client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
         return [
-            Chunk(id=str(point.id), content=str((point.payload or {}).get("content", "")), embedding=[], metadata=self._metadata(point.payload or {}))
+            Chunk(
+                id=str(point.id),
+                content=str((point.payload or {}).get("content", "")),
+                embedding=[],
+                metadata=self._metadata(point.payload or {}),
+            )
             for point in points
         ]
 
@@ -103,3 +110,15 @@ class VectorStore:
                 }
             documents[key]["chunks"] += 1
         return sorted(documents.values(), key=lambda item: item["document_name"].lower())
+
+    def delete_document(self, document_hash: str | None = None, document_name: str | None = None) -> int:
+        if not document_hash and not document_name:
+            raise ValueError("document_hash or document_name is required")
+        key = "document_hash" if document_hash else "document_name"
+        value = document_hash or document_name
+        before = self.count()
+        self.client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=Filter(must=[FieldCondition(key=key, match=MatchValue(value=value))]),
+        )
+        return max(0, before - self.count())
