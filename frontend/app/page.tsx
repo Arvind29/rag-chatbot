@@ -18,14 +18,15 @@ export default function Home() {
   const [category, setCategory] = useState("reference");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
 
   async function refreshDocuments() {
     try {
-      const response = await fetch(`${API_URL}/api/documents`);
+      const response = await fetch(`${API_URL}/api/documents`, { cache: "no-store" });
       if (response.ok) setDocuments((await response.json()).documents || []);
-    } catch {}
+    } catch (err) { console.error("Document refresh failed", err); }
   }
   useEffect(() => { refreshDocuments(); }, []);
 
@@ -50,14 +51,21 @@ export default function Home() {
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (!allowed.includes(extension)) { setError("Supported files: PDF, DOCX, TXT, MD and CSV."); return; }
     setUploading(true); setError("");
+    setUploadStatus(`Uploading ${file.name}...`);
     try {
       const form = new FormData(); form.append("file", file); form.append("category", category);
+      setUploadStatus(`Uploading ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
       const response = await fetch(`${API_URL}/api/upload`, { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || data.error || "Upload failed.");
+      const raw = await response.text();
+      let data: any = {};
+      try { data = JSON.parse(raw); } catch { data = { detail: raw }; }
+      if (!response.ok) throw new Error(data.detail || data.error || `Upload failed (HTTP ${response.status}).`);
+      setUploadStatus(`✓ Uploaded and indexed: ${file.name} • ${data.chunks ?? 0} chunks • ${data.category || category}`);
       await refreshDocuments();
-    } catch (err) { setError(err instanceof Error ? err.message : "Upload failed."); }
-    finally { setUploading(false); }
+    } catch (err) {
+      setUploadStatus("");
+      setError(err instanceof Error ? err.message : "Upload failed. Check FastAPI on port 8001.");
+    } finally { setUploading(false); }
   }
 
   function drop(event: DragEvent<HTMLDivElement>) {
@@ -81,6 +89,7 @@ export default function Home() {
           <div className="text-sm font-medium">{uploading ? "Indexing document..." : "Drag & drop document"}</div><div className="my-2 text-xs text-slate-500">PDF • DOCX • TXT • MD • CSV</div>
           <label className="inline-block cursor-pointer bg-slate-200 px-4 py-2 text-sm font-medium">Choose file<input type="file" accept={EXTENSIONS} className="hidden" disabled={uploading} onChange={e => { const file = e.target.files?.[0]; if (file) upload(file); e.currentTarget.value = ""; }} /></label>
         </div>
+        {uploadStatus && <div className="mt-3 border border-slate-300 bg-slate-50 p-3 text-xs font-medium text-slate-700">{uploadStatus}</div>}
         <h2 className="mt-7 font-semibold">Indexed documents</h2>
         <div className="mt-3 space-y-2">{documents.length ? documents.map(doc => <div key={`${doc.document_name}-${doc.category}`} className="border p-3"><div className="truncate text-sm font-medium">{doc.document_name}</div><div className="mt-1 text-xs text-slate-500">{doc.chunks} chunks • {doc.category || "reference"} • {doc.document_type || doc.source_type}</div></div>) : <p className="text-sm text-slate-400">No documents indexed.</p>}</div>
       </aside>
