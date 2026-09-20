@@ -2,7 +2,7 @@
 
 import { DragEvent, FormEvent, useEffect, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 const CATEGORIES = ["work", "learning", "finance", "personal", "reference"];
 const EXTENSIONS = ".pdf,.docx,.txt,.md,.csv";
 
