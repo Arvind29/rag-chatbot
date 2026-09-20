@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from functools import lru_cache
 import os
 import tempfile
 import requests
@@ -32,7 +33,14 @@ class UrlRequest(BaseModel):
     url: str
     category: str = "reference"
 
-def store():
+@lru_cache(maxsize=1)
+def store() -> VectorStore:
+    """Return one Qdrant local client for this FastAPI process.
+
+    Qdrant Local locks its storage directory, so creating a new client for
+    every request causes storage-lock failures. A single cached client keeps
+    all endpoints in this process on the same local store.
+    """
     return VectorStore()
 
 def _analysis_context(s: VectorStore, max_chunks: int = 120) -> str:
