@@ -1,71 +1,138 @@
-# RAG Chatbot — Python Validation Prototype
+# Local RAG Assistant
 
-This repository is Phase 1 of a production-oriented RAG chatbot.
+A local-first document RAG assistant using **Next.js + FastAPI + Ollama + Qdrant Local**.
 
-It validates the core pipeline before the Next.js/Tailwind frontend is built:
+No Gemini API, cloud vector database, or Vercel deployment is required for the local application.
 
-PDF/URL → extraction → cleaning → chunking → Gemini embeddings → vector retrieval → Gemini answer.
+## Architecture
 
-## Current scope
-
-- PDF text extraction
-- Public webpage extraction
-- Gemini embeddings
-- In-memory cosine-similarity retrieval
-- Similarity threshold
-- Grounded Gemini answer generation
-- Basic SSRF protection for URL ingestion
-
-## Important
-
-The vector store is intentionally in-memory for validation. It will be replaced by a persistent hosted vector database before production deployment.
-
-## Setup
-
-```bash
-python -m venv .venv
+```text
+Browser :3005
+    |
+    | Next.js /api proxy
+    v
+FastAPI :8005
+    |
+    +--> Ollama :11434
+    |      +--> llama3.2:3b       (chat)
+    |      +--> nomic-embed-text  (embeddings)
+    |
+    +--> Qdrant Local
+          ./data/qdrant
 ```
 
-Windows:
+The application supports local ingestion and grounded questions over:
 
-```bash
-.venv\Scripts\activate
-```
+- PDF
+- DOCX
+- TXT
+- Markdown
+- CSV
+- Public URLs
 
-Install:
+Documents are assigned a category (`work`, `learning`, `finance`, `personal`, `reference`) and the category is stored in Qdrant metadata and used for filtered retrieval.
 
-```bash
+## Windows setup
+
+From the repository root:
+
+```powershell
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and add your Gemini API key.
+Make sure Ollama is installed and the required models exist:
 
-## Test Gemini
-
-```bash
-python app.py --question "Hello"
+```powershell
+ollama list
 ```
 
-For RAG testing, ingest a PDF:
+Expected models:
 
-```bash
-python app.py --pdf data/sample.pdf --question "What is the main topic of this document?"
+```text
+llama3.2:3b
+nomic-embed-text:latest
 ```
 
-Or a public webpage:
+## Start the backend
 
-```bash
-python app.py --url "https://example.com" --question "What is this page about?"
+Use **one and only one** FastAPI process because Qdrant Local locks `./data/qdrant`.
+
+```powershell
+.\venv\Scripts\Activate.ps1
+uvicorn api.server:app --reload --port 8005
 ```
 
-## Phase 2
+Health check:
 
-After this prototype passes:
+```powershell
+curl.exe http://127.0.0.1:8005/api/health
+```
 
-1. Move the backend into the deployable application architecture.
-2. Add persistent vector storage.
-3. Build the Next.js + TypeScript + Tailwind frontend.
-4. Add the mobile-first responsive chat UI.
-5. Push to GitHub.
-6. Deploy/check on Vercel.
-7. Run functional and responsive tests.
+Expected:
+
+```json
+{"status":"ok","service":"local-rag"}
+```
+
+## Start the frontend
+
+In a second PowerShell:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend runs on:
+
+```text
+http://localhost:3005
+```
+
+The Next.js proxy forwards `/api/*` to FastAPI on `127.0.0.1:8005`, so the browser does not need direct cross-origin access to FastAPI.
+
+## Important Qdrant Local rule
+
+Do not start a second Uvicorn process against the same `./data/qdrant` directory. If an old Python/Uvicorn process is running, stop it before starting the backend.
+
+To find Python processes:
+
+```powershell
+Get-Process python -ErrorAction SilentlyContinue
+```
+
+To stop an unwanted process:
+
+```powershell
+Stop-Process -Id <PID> -Force
+```
+
+Do **not** delete `data/qdrant` just to fix a lock unless you intentionally want to remove the indexed data.
+
+## Application flow
+
+```text
+Upload document
+   -> extract text
+   -> normalize
+   -> chunk
+   -> Ollama embedding
+   -> Qdrant Local
+   -> category + source metadata
+
+Question
+   -> Ollama embedding
+   -> category-aware Qdrant retrieval
+   -> similarity threshold
+   -> grounded context
+   -> Ollama answer
+   -> source metadata returned to UI
+```
+
+The UI shows upload/indexing status, indexed documents, categories, chat responses, and retrieved sources.
+
+## Local-only principle
+
+The application is designed for local use. Ollama and Qdrant Local run on the workstation; uploaded documents are processed locally by the application. URL ingestion is the only feature that intentionally retrieves an external webpage.
