@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 import os
 import tempfile
+import requests
 
 from rag.config import DOCUMENT_CATEGORIES, MAX_FILE_BYTES
 from rag.ingest import SUPPORTED_EXTENSIONS, ingest_file, ingest_url
