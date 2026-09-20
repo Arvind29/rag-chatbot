@@ -1,71 +1,41 @@
-# RAG Chatbot — Python Validation Prototype
+# Private RAG Assistant
 
-This repository is Phase 1 of a production-oriented RAG chatbot.
+Personal knowledge assistant with document-aware retrieval, global cross-document summarization, document inventory, follow-up context, source grounding, and controlled local development.
 
-It validates the core pipeline before the Next.js/Tailwind frontend is built:
+## Architecture
 
-PDF/URL → extraction → cleaning → chunking → Gemini embeddings → vector retrieval → Gemini answer.
+Next.js :3005 -> `/api/*` development proxy -> FastAPI :8005 -> Query Router -> Supabase pgvector -> Gemini.
 
-## Current scope
+Retrieval modes:
+- normal semantic question
+- document-specific retrieval
+- cross-document/global retrieval
+- document inventory
 
-- PDF text extraction
-- Public webpage extraction
-- Gemini embeddings
-- In-memory cosine-similarity retrieval
-- Similarity threshold
-- Grounded Gemini answer generation
-- Basic SSRF protection for URL ingestion
+Global requests such as `Summarize all docs` deliberately sample representative chunks from every indexed document instead of asking the vector search for only the five most similar chunks.
 
-## Important
+## Local run
 
-The vector store is intentionally in-memory for validation. It will be replaced by a persistent hosted vector database before production deployment.
-
-## Setup
-
-```bash
-python -m venv .venv
+Backend:
+```powershell
+cd C:\Users\arvin\local-rag
+.\venv\Scripts\Activate.ps1
+uvicorn api.server:app --reload --port 8005
 ```
 
-Windows:
-
-```bash
-.venv\Scripts\activate
+Frontend:
+```powershell
+cd frontend
+npm install
+npm run dev -- --port 3005
 ```
 
-Install:
+The frontend development proxy points `/api/*` to `http://127.0.0.1:8005`.
 
-```bash
-pip install -r requirements.txt
-```
+## Configuration
 
-Copy `.env.example` to `.env` and add your Gemini API key.
+Copy `.env.example` to `.env` and configure Gemini and Supabase credentials. RAG tuning variables control top-k retrieval, global sampling, context size, memory turns, and chunking.
 
-## Test Gemini
+## Safety boundary
 
-```bash
-python app.py --question "Hello"
-```
-
-For RAG testing, ingest a PDF:
-
-```bash
-python app.py --pdf data/sample.pdf --question "What is the main topic of this document?"
-```
-
-Or a public webpage:
-
-```bash
-python app.py --url "https://example.com" --question "What is this page about?"
-```
-
-## Phase 2
-
-After this prototype passes:
-
-1. Move the backend into the deployable application architecture.
-2. Add persistent vector storage.
-3. Build the Next.js + TypeScript + Tailwind frontend.
-4. Add the mobile-first responsive chat UI.
-5. Push to GitHub.
-6. Deploy/check on Vercel.
-7. Run functional and responsive tests.
+The assistant is currently knowledge-only. Computer-changing tools and automations are intentionally outside the LLM control path until an explicit approval/audit layer is added.
