@@ -4,6 +4,7 @@ import re
 import uuid
 from pathlib import Path
 
+import requests
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -17,6 +18,8 @@ DATA = BASE / "data"
 UPLOADS = DATA / "uploads"
 STORE = DATA / "vector_store.json"
 FRONTEND = ROOT / "index.html"
+OLLAMA_URL = "http://localhost:11434"
+OLLAMA_MODEL = "llama3.2:3b"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Simple RAG Chatbot")
@@ -60,7 +63,11 @@ class ChatRequest(BaseModel): question: str
 def home(): return FileResponse(FRONTEND)
 
 @app.get("/health")
-def health(): return {"status":"ok", "chunks":len(load_store()["chunks"])}
+def health():
+    ollama=False
+    try: ollama=requests.get(f"{OLLAMA_URL}/api/tags", timeout=3).ok
+    except requests.RequestException: pass
+    return {"status":"ok", "chunks":len(load_store()["chunks"]), "ollama":ollama, "model":OLLAMA_MODEL}
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -81,6 +88,25 @@ async def upload(file: UploadFile = File(...)):
     except HTTPException: raise
     except Exception as e: raise HTTPException(500,str(e))
 
+def ollama_answer(question, context):
+    prompt=f'''You are a helpful private document assistant. Answer ONLY from the supplied document context. If the answer is not in the context, say you do not have enough information. Do not invent facts. Be concise and easy to understand.
+
+DOCUMENT CONTEXT:
+{context}
+
+QUESTION:
+{question}
+
+ANSWER:'''
+    try:
+        r=requests.post(f"{OLLAMA_URL}/api/generate", json={"model":OLLAMA_MODEL,"prompt":prompt,"stream":False,"options":{"temperature":0.1}}, timeout=120)
+        if not r.ok: raise RuntimeError(f"Ollama returned HTTP {r.status_code}: {r.text[:500]}")
+        data=r.json(); answer=(data.get("response") or "").strip()
+        if not answer: raise RuntimeError("Ollama returned an empty response")
+        return answer
+    except requests.RequestException as e:
+        raise RuntimeError("Ollama is not running. Start Ollama and run: ollama pull llama3.2:3b") from e
+
 @app.post("/chat")
 def chat(req: ChatRequest):
     question=clean(req.question)
@@ -90,11 +116,6 @@ def chat(req: ChatRequest):
     qvec=model().encode([question], normalize_embeddings=True)[0].tolist()
     ranked=sorted(store["chunks"], key=lambda x: cosine(qvec,x["vector"]), reverse=True)[:5]
     context="\n\n".join(f"[{r['document']} page {r['page']}] {r['text']}" for r in ranked)
-    terms=[x.lower() for x in re.findall(r"\b\w+\b",question) if len(x)>2]
-    sentences=re.split(r"(?<=[.!?])\s+", context); selected=[]
-    for s in sentences:
-        score=sum(1 for t in terms if t in s.lower())
-        if score: selected.append((score,s))
-    selected=[s for _,s in sorted(selected,reverse=True)[:6]]
-    answer=" ".join(selected) if selected else "I found relevant document sections, but I could not extract a direct answer. Try a more specific question."
+    try: answer=ollama_answer(question, context)
+    except RuntimeError as e: raise HTTPException(503,str(e))
     return {"answer":answer,"sources":[{"document_name":r["document"],"page_number":r["page"]} for r in ranked]}
