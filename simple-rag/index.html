@@ -1,27 +1,36 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Simple RAG Chatbot</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDF RAG Assistant</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#f4f6f9;color:#172033}header{background:#17324d;color:#fff;padding:18px 24px}header h1{margin:0;font-size:22px}header p{margin:5px 0 0;color:#bdcad8;font-size:13px}.app{max-width:1100px;margin:25px auto;padding:0 16px;display:grid;grid-template-columns:280px 1fr;gap:18px}.panel,.chat{background:#fff;border:1px solid #dbe2ea;border-radius:10px}.panel{padding:18px;height:max-content}.panel h2{font-size:16px;margin:0 0 12px}.upload{display:block;border:1px dashed #9eabbc;padding:18px;text-align:center;border-radius:8px;color:#526174;cursor:pointer}.upload input{display:none}.files{margin-top:15px;font-size:13px}.file{padding:8px 0;border-bottom:1px solid #edf0f4}.status{font-size:12px;color:#68768a;margin-top:12px}.chat{display:flex;flex-direction:column;height:650px}.messages{flex:1;overflow:auto;padding:22px}.msg{margin:0 0 16px;padding:13px 15px;border-radius:9px;max-width:85%;line-height:1.55;white-space:pre-wrap}.user{margin-left:auto;background:#e7f0fb}.bot{background:#f0f2f5}.composer{display:flex;border-top:1px solid #e1e5eb;padding:14px;gap:10px}.composer input{flex:1;padding:13px;border:1px solid #cbd3df;border-radius:7px;font-size:14px}.composer button{padding:0 20px;border:0;border-radius:7px;background:#2867a8;color:#fff;font-weight:bold}.composer button:disabled{opacity:.5}.hint{font-size:11px;color:#7b8796;margin-top:12px}@media(max-width:750px){.app{grid-template-columns:1fr}.panel{order:2}.chat{height:70vh}}
-</style></head>
-<body><header><h1>Simple RAG Chatbot</h1><p>Private browser-based document search • no API key • Vercel compatible</p></header>
-<div class="app"><aside class="panel"><h2>Knowledge Base</h2><label class="upload">Upload PDF<input id="file" type="file" accept="application/pdf"></label><div id="files" class="files">No document indexed.</div><div id="status" class="status">Ready</div><div class="hint">Documents and vectors stay in this browser using local storage. Nothing is uploaded to a server.</div></aside>
-<section class="chat"><div id="messages" class="messages"><div class="msg bot">Upload a PDF, then ask a question. I will search the document locally and show the most relevant passages.</div></div><form id="form" class="composer"><input id="question" placeholder="Ask a question..." autocomplete="off"><button id="send">Send</button></form></section></div>
-<script type="module">
-import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-const KEY='simple-rag-v1';let db=load();
-const messages=document.getElementById('messages'),file=document.getElementById('file'),files=document.getElementById('files'),status=document.getElementById('status'),form=document.getElementById('form'),question=document.getElementById('question'),send=document.getElementById('send');
-function load(){try{return JSON.parse(localStorage.getItem(KEY)||'{"documents":[],"chunks":[]}')}catch{return {documents:[],chunks:[]}}}
-function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f6f9;color:#172033}header{background:#17324d;color:#fff;padding:20px 24px}header h1{margin:0;font-size:22px}header p{margin:6px 0 0;color:#c2cedb;font-size:13px}.app{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;grid-template-columns:270px 1fr;gap:18px}.panel,.chat{background:#fff;border:1px solid #dbe2ea;border-radius:10px}.panel{padding:18px;height:max-content}.panel h2{font-size:16px;margin:0 0 14px}.upload{display:block;border:1px dashed #9eabbc;padding:20px;text-align:center;border-radius:8px;color:#526174;cursor:pointer}.upload input{display:none}.file{margin-top:15px;padding:11px;background:#f6f8fa;border-radius:7px;font-size:13px;word-break:break-word}.status{margin-top:12px;font-size:12px;color:#68768a}.status.ok{color:#16834b}.status.err{color:#c0392b}.hint{margin-top:14px;font-size:11px;color:#7b8796;line-height:1.5}.chat{display:flex;flex-direction:column;height:650px}.messages{flex:1;overflow:auto;padding:22px}.msg{margin:0 0 16px;padding:13px 15px;border-radius:9px;max-width:88%;line-height:1.55;white-space:pre-wrap}.user{margin-left:auto;background:#e7f0fb}.bot{background:#f0f2f5}.source{margin-top:8px;font-size:11px;color:#657386}.composer{display:flex;border-top:1px solid #e1e5eb;padding:14px;gap:10px}.composer input{flex:1;padding:13px;border:1px solid #cbd3df;border-radius:7px;font-size:14px}.composer button{padding:0 20px;border:0;border-radius:7px;background:#2867a8;color:#fff;font-weight:bold;cursor:pointer}.composer button:disabled{opacity:.5;cursor:wait}@media(max-width:750px){.app{grid-template-columns:1fr}.panel{order:2}.chat{height:70vh}}
+</style>
+</head>
+<body>
+<header><h1>PDF RAG Assistant</h1><p>Local document Q&A • FastAPI • Ollama • No cloud API key</p></header>
+<div class="app">
+<aside class="panel">
+<h2>Knowledge Base</h2>
+<label class="upload">Upload PDF<input id="file" type="file" accept="application/pdf"></label>
+<div id="fileInfo" class="file">No document indexed.</div>
+<div id="status" class="status">Checking backend...</div>
+<div class="hint">PDF text and vectors are processed by your local backend. Answers are generated by Ollama using retrieved document sections.</div>
+</aside>
+<section class="chat">
+<div id="messages" class="messages"><div class="msg bot">Upload a PDF and ask a question. I will retrieve relevant sections and ask the local LLM to answer from them.</div></div>
+<form id="form" class="composer"><input id="question" placeholder="Ask a question about the PDF..." autocomplete="off"><button id="send">Send</button></form>
+</section>
+</div>
+<script>
+const file=document.getElementById('file'),fileInfo=document.getElementById('fileInfo'),status=document.getElementById('status'),messages=document.getElementById('messages'),form=document.getElementById('form'),question=document.getElementById('question'),send=document.getElementById('send');
 function add(text,who){const d=document.createElement('div');d.className='msg '+who;d.textContent=text;messages.appendChild(d);messages.scrollTop=messages.scrollHeight;return d}
-function tokenize(s){return (s.toLowerCase().match(/[a-z0-9]+/g)||[]).filter(x=>x.length>2)}
-function makeChunks(text,page){const clean=text.replace(/\s+/g,' ').trim(),out=[];const size=900,overlap=120;for(let i=0;i<clean.length;){const end=Math.min(clean.length,i+size);if(end>i)out.push({text:clean.slice(i,end),page});if(end>=clean.length)break;i=end-overlap}return out}
-function vector(text,terms){const words=tokenize(text),counts={};words.forEach(w=>counts[w]=(counts[w]||0)+1);return terms.map(t=>(counts[t]||0)/Math.max(words.length,1))}
-function cosine(a,b){let dot=0,aa=0,bb=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i]}return aa&&bb?dot/(Math.sqrt(aa)*Math.sqrt(bb)):0}
-function renderFiles(){files.innerHTML=db.documents.length?db.documents.map(d=>`<div class="file"><b>${escapeHtml(d.name)}</b><br>${d.chunks} chunks</div>`).join(''):'No document indexed.'}
-function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-renderFiles();status.textContent=`Ready • ${db.chunks.length} chunks`;
-file.onchange=async()=>{const f=file.files[0];if(!f)return;if(f.type!=='application/pdf'){status.textContent='Please select a PDF.';return}status.textContent='Reading PDF...';try{const data=await f.arrayBuffer(),pdf=await pdfjsLib.getDocument({data}).promise;let all=[];for(let p=1;p<=pdf.numPages;p++){status.textContent=`Reading page ${p} of ${pdf.numPages}...`;const page=await pdf.getPage(p),content=await page.getTextContent(),text=content.items.map(x=>x.str).join(' ');all.push(...makeChunks(text,p))}if(!all.length)throw new Error('No readable text found in PDF.');const terms=[...new Set(all.flatMap(x=>tokenize(x.text)))];const records=all.map(x=>({...x,document:f.name,vector:vector(x.text,terms)}));db={documents:[{name:f.name,chunks:records.length,pages:pdf.numPages,terms}],chunks:records};db.chunks.forEach(x=>x.terms=terms);save();renderFiles();status.textContent=`Indexed • ${records.length} chunks`;add(`Indexed ${f.name} (${records.length} chunks). Ask your question.`,'bot')}catch(e){status.textContent='Error: '+e.message}finally{file.value=''}};
-form.onsubmit=e=>{e.preventDefault();const q=question.value.trim();if(!q||!db.chunks.length)return;question.value='';add(q,'user');const wait=add('Searching document...','bot');send.disabled=true;setTimeout(()=>{try{const terms=db.chunks[0].terms||[...new Set(db.chunks.flatMap(x=>tokenize(x.text)))];const qv=vector(q,terms);const ranked=db.chunks.map(x=>({...x,score:cosine(qv,vector(x.text,terms))})).sort((a,b)=>b.score-a.score).slice(0,5).filter(x=>x.score>0);if(!ranked.length){wait.textContent='I could not find a relevant passage in the uploaded document.';return}wait.textContent=ranked.map((x,i)=>`${i+1}. ${x.text}\n(Source: ${x.document}, page ${x.page})`).join('\n\n')}finally{send.disabled=false}},50)};
-</script></body></html>
+async function api(path,options={}){const r=await fetch(path,options);const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw new Error(`Server returned non-JSON response (${r.status})`)}if(!r.ok)throw new Error(data.detail||data.error||`Request failed (${r.status})`);return data}
+async function health(){try{const d=await api('/health');if(d.ollama){status.textContent=`Backend online • Ollama ready • ${d.chunks} chunks`;status.className='status ok'}else{status.textContent='Backend online • Ollama not detected';status.className='status err'}}catch(e){status.textContent='Backend unavailable';status.className='status err'}}
+health();
+file.onchange=async()=>{const f=file.files[0];if(!f)return;status.textContent='Uploading and indexing...';status.className='status';try{const fd=new FormData();fd.append('file',f);const d=await api('/upload',{method:'POST',body:fd});fileInfo.textContent=`${d.document} • ${d.pages} pages • ${d.chunks} chunks`;status.textContent=`Indexed successfully • ${d.chunks} chunks`;status.className='status ok';add(`Document indexed: ${d.document}. You can now ask questions.`,'bot')}catch(e){status.textContent=e.message;status.className='status err'}};
+form.onsubmit=async e=>{e.preventDefault();const q=question.value.trim();if(!q)return;question.value='';add(q,'user');const wait=add('Searching document and generating answer...','bot');send.disabled=true;try{const d=await api('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});let text=d.answer||'No answer returned.';if(d.sources?.length)text+=`\n\nSources: ${d.sources.map(s=>`${s.document_name} — page ${s.page_number}`).join(', ')}`;wait.textContent=text}catch(e){wait.textContent='Error: '+e.message}finally{send.disabled=false}};
+</script>
+</body>
+</html>
