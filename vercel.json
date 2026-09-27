@@ -1,6 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": [
+        "frontend/**",
+        "backend/data/vector_store/**"
+      ]
+    }
+  },
   "rewrites": [
-    {"source":"/","destination":"/frontend/index.html"}
+    {"source":"/", "destination":"/frontend/index.html"}
   ]
 }
