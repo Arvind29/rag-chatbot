@@ -1,15 +1,88 @@
 "use client";
-import {ChangeEvent,FormEvent,useEffect,useState} from "react";
-const API_URL=process.env.NEXT_PUBLIC_API_URL||"";
+import { ChangeEvent, FormEvent, useState } from "react";
+
+// Production frontend must use the known working backend deployment.
+// NEXT_PUBLIC_API_URL can override this in Vercel if needed.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://rag-chatbot-eight-phi.vercel.app";
+
 type Source={document_name:string;page_number:number|null;source_url:string|null;score?:number};
 type Document={document_name:string;source_type:string;source_url:string|null;document_hash:string|null;chunk_count:number;page_count:number};
 type Message={role:"user"|"assistant";content:string};
 type Response={answer?:string;sources?:Source[];mode?:string;documents?:Document[];error?:string;detail?:string};
-async function api(path:string,init?:RequestInit){const r=await fetch(`${API_URL}${path}`,{...init,cache:"no-store"});const text=await r.text();let d:Response&{count?:number}={};try{d=text?JSON.parse(text):{}}catch{throw new Error(`API returned non-JSON (${r.status}). Check that FastAPI is running.`)}if(!r.ok)throw new Error(d.detail||d.error||`API request failed (${r.status})`);return d}
-export default function Home(){const[q,setQ]=useState("");const[messages,setMessages]=useState<Message[]>([]);const[sources,setSources]=useState<Source[]>([]);const[docs,setDocs]=useState<Document[]>([]);const[mode,setMode]=useState("");const[loading,setLoading]=useState(false);const[uploading,setUploading]=useState(false);const[error,setError]=useState("");
-const refresh=async()=>{try{const d=await api("/api/documents");setDocs(d.documents||[]);setError("")}catch(e){setError(e instanceof Error?e.message:"Cannot connect to local API.")}};useEffect(()=>{void refresh()},[]);
-async function ask(e?:FormEvent){e?.preventDefault();const text=q.trim();if(!text||loading)return;const history=[...messages,{role:"user" as const,content:text}];setMessages(history);setQ("");setSources([]);setMode("");setError("");setLoading(true);try{const d=await api("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:text,history:history.slice(-6)})});setMessages(x=>[...x,{role:"assistant",content:d.answer||"No answer returned."}]);setSources(d.sources||[]);setMode(d.mode||"qa");if(d.documents)setDocs(d.documents)}catch(e){setError(e instanceof Error?e.message:"Request failed.")}finally{setLoading(false)}}
-async function upload(e:ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;if(!f.name.toLowerCase().endsWith(".pdf")){setError("Only PDF files are supported.");return}setUploading(true);setError("");try{const b=new Uint8Array(await f.arrayBuffer());let s="";for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));await api("/api/upload-pdf",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:f.name,content_base64:btoa(s)})});await refresh()}catch(e){setError(e instanceof Error?e.message:"Upload failed.")}finally{setUploading(false);e.target.value=""}}
-async function remove(hash:string|null){if(!hash||!confirm("Delete this indexed document?"))return;try{await api("/api/document",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({document_hash:hash})});await refresh()}catch(e){setError(e instanceof Error?e.message:"Delete failed.")}}
-return <main className="flex h-screen flex-col bg-slate-950 text-slate-100"><header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-5"><div><h1 className="font-semibold">Private RAG Assistant</h1><p className="text-xs text-slate-400">Grounded knowledge • controlled sources</p></div><div className="flex gap-2"><span className="hidden rounded-full border border-emerald-800 bg-emerald-950 px-3 py-1 text-xs text-emerald-300 sm:inline">{docs.length} docs</span><button onClick={()=>{setMessages([]);setSources([]);setMode("");setError("")}} className="border border-slate-700 px-3 py-2 text-sm">New chat</button></div></header><div className="flex min-h-0 flex-1"><aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-slate-800 p-4 md:block"><Panel docs={docs} uploading={uploading} upload={upload} remove={remove} refresh={refresh}/></aside><section className="flex min-w-0 flex-1 flex-col"><div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-4xl px-4 py-8">{!messages.length?<div className="py-16 text-center"><h2 className="text-3xl font-semibold">What do you want to know?</h2><p className="mx-auto mt-3 max-w-2xl text-slate-400">Ask a document, ask across everything, or inspect your private knowledge base.</p><div className="mt-8 grid gap-2 sm:grid-cols-2">{["What documents do I have?","Summarize all docs","What are the main topics across all documents?","What should I remember from these docs?"].map(x=><button key={x} onClick={()=>setQ(x)} className="border border-slate-800 bg-slate-900 p-3 text-left text-sm">{x}</button>)}</div></div>:<div className="space-y-5">{messages.map((x,i)=><div key={i} className={x.role==="user"?"ml-auto max-w-3xl":"max-w-4xl"}><div className="border border-slate-800 bg-slate-950 p-4"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{x.role}</div><div className="whitespace-pre-wrap leading-7">{x.content}</div></div></div>)}{loading&&<div className="border border-slate-800 p-4 text-sm text-slate-400">Thinking over indexed sources…</div>}</div>}{mode&&<div className="mt-6 text-xs uppercase tracking-wider text-slate-500">Retrieval mode: {mode}</div>}{sources.length>0&&<div className="mt-5"><h3 className="font-semibold">Sources</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{sources.map((s,i)=><div key={i} className="border border-slate-800 bg-slate-900 p-3 text-sm"><div className="font-medium">{s.document_name}</div><div className="mt-1 text-xs text-slate-400">{s.page_number?`Page ${s.page_number}`:"Document source"}{s.score!==undefined?` • similarity ${s.score}`:""}</div></div>)}</div></div>}{error&&<div className="mt-5 border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}</div></div><form onSubmit={ask} className="shrink-0 border-t border-slate-800 p-4"><div className="mx-auto flex max-w-4xl gap-2"><textarea value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void ask()}}} rows={1} placeholder="Ask your private knowledge base…" className="min-h-12 flex-1 resize-none border border-slate-700 bg-slate-900 px-4 py-3 outline-none" disabled={loading}/><button disabled={loading||!q.trim()} className="bg-slate-200 px-5 font-semibold text-slate-900 disabled:opacity-40">Send</button></div></form></section></div></main>}
-function Panel({docs,uploading,upload,remove,refresh}:{docs:Document[];uploading:boolean;upload:(e:ChangeEvent<HTMLInputElement>)=>void;remove:(h:string|null)=>Promise<void>;refresh:()=>Promise<void>}){return <div><div className="flex items-center justify-between"><div><h2 className="font-semibold">Knowledge base</h2><p className="text-xs text-slate-500">{docs.length} indexed documents</p></div><button onClick={()=>void refresh()} className="text-xs text-slate-400">Refresh</button></div><label className="mt-5 flex cursor-pointer justify-center border border-dashed border-slate-700 bg-slate-900 p-5 text-sm"> <input type="file" accept="application/pdf" className="hidden" onChange={upload}/>{uploading?"Indexing PDF…":"Upload PDF"}</label><div className="mt-5 space-y-2">{docs.map(d=><div key={d.document_hash||d.document_name} className="border border-slate-800 bg-slate-900 p-3"><div className="break-words text-sm font-medium">{d.document_name}</div><div className="mt-1 text-xs text-slate-500">{d.chunk_count} chunks{d.page_count?` • ${d.page_count} pages`:""}</div><button onClick={()=>void remove(d.document_hash)} className="mt-2 text-xs text-red-400">Remove</button></div>)}</div></div>}
+
+async function api(path:string, init?:RequestInit){
+  const r=await fetch(`${API_URL}${path}`,{...init,cache:"no-store"});
+  const text=await r.text();
+  let d:Response={};
+  try{d=text?JSON.parse(text):{}}catch{throw new Error(`API returned non-JSON (${r.status}). Backend endpoint is unavailable.`)}
+  if(!r.ok) throw new Error(d.detail||d.error||`API request failed (${r.status})`);
+  return d;
+}
+
+export default function Home(){
+  const[q,setQ]=useState("");
+  const[messages,setMessages]=useState<Message[]>([]);
+  const[sources,setSources]=useState<Source[]>([]);
+  const[docs,setDocs]=useState<Document[]>([]);
+  const[mode,setMode]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[uploading,setUploading]=useState(false);
+  const[error,setError]=useState("");
+
+  async function ask(e?:FormEvent){
+    e?.preventDefault();
+    const text=q.trim();
+    if(!text||loading)return;
+    const history=[...messages,{role:"user" as const,content:text}];
+    setMessages(history);setQ("");setSources([]);setMode("");setError("");setLoading(true);
+    try{
+      const d=await api("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:text,history:history.slice(-6)})});
+      setMessages(x=>[...x,{role:"assistant",content:d.answer||"No answer returned."}]);
+      setSources(d.sources||[]);setMode(d.mode||"qa");
+    }catch(e){setError(e instanceof Error?e.message:"Request failed.")}
+    finally{setLoading(false)}
+  }
+
+  async function upload(e:ChangeEvent<HTMLInputElement>){
+    const f=e.target.files?.[0];
+    if(!f)return;
+    if(!f.name.toLowerCase().endsWith(".pdf")){setError("Only PDF files are supported.");return}
+    setUploading(true);setError("");
+    try{
+      const b=new Uint8Array(await f.arrayBuffer());
+      let s="";
+      for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));
+      await api("/api/upload-pdf",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:f.name,content_base64:btoa(s)})});
+      setDocs(x=>[...x.filter(d=>d.document_name!==f.name),{document_name:f.name,source_type:"pdf",source_url:null,document_hash:null,chunk_count:0,page_count:0}]);
+    }catch(e){setError(e instanceof Error?e.message:"Upload failed.")}
+    finally{setUploading(false);e.target.value=""}
+  }
+
+  function remove(hash:string|null,name:string){
+    // The working backend does not expose document deletion. Keep removal local only.
+    setDocs(x=>x.filter(d=>(hash?d.document_hash!==hash:d.document_name!==name)));
+  }
+
+  return <main className="flex h-screen flex-col bg-slate-950 text-slate-100">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-5">
+      <div><h1 className="font-semibold">Private RAG Assistant</h1><p className="text-xs text-slate-400">Grounded knowledge • controlled sources</p></div>
+      <div className="flex gap-2"><span className="hidden rounded-full border border-emerald-800 bg-emerald-950 px-3 py-1 text-xs text-emerald-300 sm:inline">{docs.length} docs</span><button onClick={()=>{setMessages([]);setSources([]);setMode("");setError("")}} className="border border-slate-700 px-3 py-2 text-sm">New chat</button></div>
+    </header>
+    <div className="flex min-h-0 flex-1">
+      <aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-slate-800 p-4 md:block"><Panel docs={docs} uploading={uploading} upload={upload} remove={remove}/></aside>
+      <section className="flex min-w-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-4xl px-4 py-8">
+          {!messages.length?<div className="py-16 text-center"><h2 className="text-3xl font-semibold">What do you want to know?</h2><p className="mx-auto mt-3 max-w-2xl text-slate-400">Ask a document or ask across your private knowledge base.</p></div>:<div className="space-y-5">{messages.map((x,i)=><div key={i} className={x.role==="user"?"ml-auto max-w-3xl":"max-w-4xl"}><div className="border border-slate-800 bg-slate-950 p-4"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{x.role}</div><div className="whitespace-pre-wrap leading-7">{x.content}</div></div></div>)}{loading&&<div className="border border-slate-800 p-4 text-sm text-slate-400">Thinking over indexed sources…</div>}</div>}
+          {mode&&<div className="mt-6 text-xs uppercase tracking-wider text-slate-500">Retrieval mode: {mode}</div>}
+          {sources.length>0&&<div className="mt-5"><h3 className="font-semibold">Sources</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{sources.map((s,i)=><div key={i} className="border border-slate-800 bg-slate-900 p-3 text-sm"><div className="font-medium">{s.document_name}</div><div className="mt-1 text-xs text-slate-400">{s.page_number?`Page ${s.page_number}`:"Document source"}{s.score!==undefined?` • similarity ${s.score}`:""}</div></div>)}</div></div>}
+          {error&&<div className="mt-5 border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
+        </div></div>
+        <form onSubmit={ask} className="shrink-0 border-t border-slate-800 p-4"><div className="mx-auto flex max-w-4xl gap-2"><textarea value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void ask()}}} rows={1} placeholder="Ask your private knowledge base…" className="min-h-12 flex-1 resize-none border border-slate-700 bg-slate-900 px-4 py-3 outline-none" disabled={loading}/><button disabled={loading||!q.trim()} className="bg-slate-200 px-5 font-semibold text-slate-900 disabled:opacity-40">Send</button></div></form>
+      </section>
+    </div>
+  </main>
+}
+
+function Panel({docs,uploading,upload,remove}:{docs:Document[];uploading:boolean;upload:(e:ChangeEvent<HTMLInputElement>)=>void;remove:(h:string|null,n:string)=>void}){
+  return <div><div><h2 className="font-semibold">Knowledge base</h2><p className="text-xs text-slate-500">{docs.length} indexed documents</p></div><label className="mt-5 flex cursor-pointer justify-center border border-dashed border-slate-700 bg-slate-900 p-5 text-sm"><input type="file" accept="application/pdf" className="hidden" onChange={upload}/>{uploading?"Indexing PDF…":"Upload PDF"}</label><div className="mt-5 space-y-2">{docs.map(d=><div key={d.document_hash||d.document_name} className="border border-slate-800 bg-slate-900 p-3"><div className="break-words text-sm font-medium">{d.document_name}</div><button onClick={()=>remove(d.document_hash,d.document_name)} className="mt-2 text-xs text-red-400">Remove from view</button></div>)}</div></div>
+}
