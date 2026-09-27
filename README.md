@@ -26,7 +26,7 @@ Gemini 3.8 Flash
 Grounded answer + source pages
 ```
 
-Google's current Gemini documentation lists `gemini-3.8-flash` as a production-ready stable Flash model and documents `gemini-embedding-001` for semantic search and RAG. citeturn0search0turn4search1
+The model IDs used here follow Google's current Gemini API documentation.
 
 ## Project structure
 
@@ -144,7 +144,7 @@ DELETE /api/documents/{document_name}
 
 ## 4. Build the deployable knowledge base
 
-For Vercel, do not depend on runtime filesystem writes. Vercel Functions have a read-only filesystem with temporary `/tmp` storage, so this project deliberately uses a read-only vector store in deployed mode. citeturn6search0
+For Vercel, do not depend on runtime filesystem writes. Vercel Functions have a read-only filesystem with temporary `/tmp` storage, so this project deliberately uses a read-only vector store in deployed mode.
 
 Put PDFs into:
 
@@ -178,7 +178,7 @@ Do not commit the source PDFs unless you intentionally want them public.
 
 ## 5. Vercel deployment
 
-Vercel supports FastAPI directly as a Python Function and can detect an application exported from `api/index.py`. citeturn5search0turn5search2
+Vercel supports FastAPI directly as a Python Function and can detect an application exported from `api/index.py`.
 
 1. Push the branch to GitHub.
 2. Import the repository into Vercel.
