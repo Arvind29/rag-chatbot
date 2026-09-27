@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+data/uploads/*
+data/vector_store.json
+data/vector_store.tmp
