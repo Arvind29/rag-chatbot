@@ -28,9 +28,7 @@ def answer_question(question: str, chunks: list[dict]) -> str:
         f"[SOURCE {i}] {row['document']} | page {row['page']} | relevance {row['score']}\n{row['text']}"
         for i, row in enumerate(chunks, start=1)
     )
-    prompt = f"""{SYSTEM_INSTRUCTION}
-
-DOCUMENT CONTEXT:
+    prompt = f"""DOCUMENT CONTEXT:
 {context}
 
 QUESTION:
@@ -42,7 +40,6 @@ ANSWER:"""
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.0,
             max_output_tokens=1200,
         ),
     )
