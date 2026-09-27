@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .rag.chunker import make_chunks
@@ -35,6 +36,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
 STORE = VectorStore()
 DEPLOYED = os.getenv("VERCEL", "") == "1"
