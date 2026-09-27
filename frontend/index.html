@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PDF RAG Assistant</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/frontend/style.css">
 </head>
 <body>
 <header class="topbar">
@@ -28,7 +28,7 @@
     </section>
   </aside>
   <section class="chat card">
-    <div class="chat-head"><div><h2>Ask your documents</h2><p>Answers are restricted to retrieved PDF content.</p></div><button id="refresh" class="ghost">Refresh</button></div>
+    <div class="chat-head"><div><h2>Ask your documents</h2><p>Answers are restricted to retrieved PDF content.</p></div><button id="refresh" class="ghost" type="button">Refresh</button></div>
     <div id="messages" class="messages"><div class="message bot">Upload a PDF, then ask a question. Sources and page numbers will be shown with each answer.</div></div>
     <form id="chatForm" class="composer">
       <input id="question" maxlength="2000" placeholder="Ask a question about the PDF..." autocomplete="off">
@@ -36,6 +36,6 @@
     </form>
   </section>
 </main>
-<script src="/app.js"></script>
+<script src="/frontend/app.js"></script>
 </body>
 </html>
